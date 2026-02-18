@@ -1,0 +1,127 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function GET(request: NextRequest) {
+  try {
+    // TODO: Get user ID from authentication
+    const userId = 1; // Replace with actual authenticated user ID
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        profile: true,
+        expertProfile: true
+      }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Combine base profile and expert-specific profile
+    const expertProfile = {
+      // Base profile data
+      name: user.name,
+      email: user.email,
+      phone: user.profile?.phone,
+      bio: user.profile?.bio,
+      location: user.profile?.location,
+      profilePicture: user.profile?.profilePicture,
+      
+      // Expert-specific data
+      title: user.expertProfile?.title,
+      organization: user.expertProfile?.organization,
+      licenseNumber: user.expertProfile?.licenseNumber,
+      yearsOfExperience: user.expertProfile?.yearsOfExperience,
+      education: user.expertProfile?.education,
+      certifications: user.expertProfile?.certifications || [],
+      expertiseAreas: user.expertProfile?.expertiseAreas || [],
+      languages: user.expertProfile?.languages || [],
+      availability: user.expertProfile?.availability,
+      consultationRates: user.expertProfile?.consultationRates,
+      achievements: user.expertProfile?.achievements || [],
+      publications: user.expertProfile?.publications || []
+    };
+
+    return NextResponse.json(expertProfile);
+  } catch (error) {
+    console.error('Error fetching expert profile:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    // TODO: Get user ID from authentication
+    const userId = 1; // Replace with actual authenticated user ID
+
+    const profileData = await request.json();
+
+    // Update base profile
+    await prisma.profile.upsert({
+      where: { userId },
+      update: {
+        phone: profileData.phone,
+        bio: profileData.bio,
+        location: profileData.location,
+        profilePicture: profileData.profilePicture
+      },
+      create: {
+        userId,
+        phone: profileData.phone,
+        bio: profileData.bio,
+        location: profileData.location,
+        profilePicture: profileData.profilePicture
+      }
+    });
+
+    // Update expert-specific profile
+    await prisma.expertProfile.upsert({
+      where: { userId },
+      update: {
+        title: profileData.title,
+        organization: profileData.organization,
+        licenseNumber: profileData.licenseNumber,
+        yearsOfExperience: profileData.yearsOfExperience,
+        education: profileData.education,
+        certifications: profileData.certifications,
+        expertiseAreas: profileData.expertiseAreas,
+        languages: profileData.languages,
+        availability: profileData.availability,
+        consultationRates: profileData.consultationRates,
+        achievements: profileData.achievements,
+        publications: profileData.publications
+      },
+      create: {
+        userId,
+        title: profileData.title,
+        organization: profileData.organization,
+        licenseNumber: profileData.licenseNumber,
+        yearsOfExperience: profileData.yearsOfExperience,
+        education: profileData.education,
+        certifications: profileData.certifications,
+        expertiseAreas: profileData.expertiseAreas,
+        languages: profileData.languages,
+        availability: profileData.availability,
+        consultationRates: profileData.consultationRates,
+        achievements: profileData.achievements,
+        publications: profileData.publications
+      }
+    });
+
+    // Update user name if provided
+    if (profileData.name) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { name: profileData.name }
+      });
+    }
+
+    return NextResponse.json({ message: 'Profile updated successfully' });
+  } catch (error) {
+    console.error('Error updating expert profile:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

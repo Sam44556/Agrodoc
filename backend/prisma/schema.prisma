@@ -1,0 +1,605 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//////////////////////////////
+// ENUMS
+//////////////////////////////
+
+enum UserRole {
+  FARMER
+  BUYER
+  EXPERT
+  ADMIN
+}
+
+enum ProduceStatus {
+  AVAILABLE
+  SOLD_OUT
+  INACTIVE
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+}
+
+enum WeatherCondition {
+  SUNNY
+  CLOUDY
+  RAINY
+  STORMY
+  FOGGY
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+//////////////////////////////
+// AUTH DOMAIN (Better Auth)
+//////////////////////////////
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  phone         String?  @unique
+  role          UserRole @default(FARMER)
+  location      String?
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Better Auth relations
+  sessions Session[]
+  accounts Account[]
+
+  // App relations
+  profile       Profile?
+  settings      UserSettings?
+  farmerProfile FarmerProfile?
+  buyerProfile  BuyerProfile?
+  expertProfile ExpertProfile?
+  adminProfile  AdminProfile?
+
+  produce   Produce[]
+  orders    Order[]
+  favorites Favorite[]
+
+  // Conversation relations
+  conversations ConversationParticipant[]
+  messages      Message[]
+
+  reviewsGiven  Review[]
+  notifications Notification[]
+
+  // Alert relations
+  weatherAlerts WeatherAlert[]
+  priceAlerts   PriceAlert[]
+  systemAlerts  SystemAlert[]
+
+  // Expert relations
+  articles   Article[]
+  advisories Advisory[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model Profile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  bio      String?
+  location String?
+  rating   Float   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("profile")
+}
+
+//////////////////////////////
+// MARKETPLACE DOMAIN
+//////////////////////////////
+
+model Category {
+  id   String @id @default(cuid())
+  name String @unique
+
+  produce Produce[]
+
+  @@map("category")
+}
+
+model Produce {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  quantity    Float
+  status      ProduceStatus @default(AVAILABLE)
+  images      String[]
+
+  farmerId String
+  farmer   User   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  orderItems OrderItem[]
+  favorites  Favorite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([farmerId])
+  @@index([categoryId])
+  @@map("produce")
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  status      OrderStatus @default(PENDING)
+  totalAmount Float
+
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  items OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId])
+  @@map("order")
+}
+
+model OrderItem {
+  id       String @id @default(cuid())
+  quantity Float
+  price    Float
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  produceId String
+  produce   Produce @relation(fields: [produceId], references: [id])
+
+  @@map("order_item")
+}
+
+//////////////////////////////
+// ALERTS & NOTIFICATIONS
+//////////////////////////////
+
+// User Profile Extensions
+model FarmerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  totalRevenue   Float @default(0)
+  activeListings Int   @default(0)
+  totalSales     Int   @default(0)
+  rating         Float @default(0)
+  reviewCount    Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("farmer_profile")
+}
+
+model BuyerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  totalOrders     Int     @default(0)
+  totalSpent      Float   @default(0)
+  favoriteCount   Int     @default(0)
+  deliveryAddress String?
+  paymentMethod   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("buyer_profile")
+}
+
+model ExpertProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  conversationCount Int   @default(0)
+  totalEarnings     Float @default(0)
+  rating            Float @default(0)
+  reviewCount       Int   @default(0)
+  hourlyRate        Float @default(0)
+
+  expertise         String[] // Array of expertise areas
+  portfolio         String[] // Array of portfolio items (URLs, descriptions, etc.)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("expert_profile")
+}
+
+model AdminProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  permissions Json // JSON array of permissions
+  department  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admin_profile")
+}
+
+// Favorites/Wishlist
+model Favorite {
+  id String @id @default(cuid())
+
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  produceId String
+  produce   Produce @relation(fields: [produceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([buyerId, produceId])
+  @@map("favorite")
+}
+
+// Chat System
+model Conversation {
+  id String @id @default(cuid())
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("conversation")
+}
+
+model ConversationParticipant {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participant")
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  content     String
+  attachments String[] @default([])
+  isRead      Boolean  @default(false)
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+  @@map("message")
+}
+
+// Market Price Data
+model MarketPrice {
+  id            String @id @default(cuid())
+  cropName      String
+  currentPrice  Float
+  previousPrice Float
+  change        Float
+  changePercent Float
+  unit          String @default("quintal")
+  region        String @default("National")
+  marketSession String @default("Morning")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cropName])
+  @@index([region])
+  @@map("market_price")
+}
+
+// Weather Data
+model WeatherData {
+  id          String           @id @default(cuid())
+  location    String
+  date        DateTime
+  temperature Float
+  humidity    Float
+  windSpeed   Float
+  rainfall    Float
+  uvIndex     Int
+  condition   WeatherCondition
+
+  createdAt DateTime @default(now())
+
+  @@unique([location, date])
+  @@index([location])
+  @@map("weather_data")
+}
+
+// Alerts System
+model WeatherAlert {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  severity    AlertSeverity
+  location    String
+  alertType   String // weather, pest, disease
+
+  farmerId String
+  farmer   User   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+
+  isRead    Boolean  @default(false)
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([farmerId])
+  @@index([location])
+  @@map("weather_alert")
+}
+
+model PriceAlert {
+  id          String  @id @default(cuid())
+  cropName    String
+  targetPrice Float
+  condition   String // above, below
+  isActive    Boolean @default(true)
+
+  farmerId String
+  farmer   User   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+
+  triggeredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([farmerId])
+  @@map("price_alert")
+}
+
+model SystemAlert {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  alertType   String // system, security, maintenance
+  severity    AlertSeverity
+
+  adminId String
+  admin   User   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  isResolved Boolean   @default(false)
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([adminId])
+  @@index([alertType])
+  @@map("system_alert")
+}
+
+// Expert Articles/Knowledge Base
+model Article {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  excerpt     String?
+  coverImage  String?
+  tags        String[]
+  isPublished Boolean  @default(false)
+  viewCount   Int      @default(0)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([authorId])
+  @@index([isPublished])
+  @@map("article")
+}
+
+// Agricultural Advisories
+model Advisory {
+  id              String        @id @default(cuid())
+  title           String
+  description     String
+  advisoryType    String // planting, pest, fertilizer, harvest
+  severity        AlertSeverity
+  affectedCrops   String[]
+  recommendations String[]
+  location        String
+
+  expertId String
+  expert   User   @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  isActive  Boolean   @default(true)
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([expertId])
+  @@index([location])
+  @@index([advisoryType])
+  @@map("advisory")
+}
+
+// Reviews and Ratings
+model Review {
+  id         String  @id @default(cuid())
+  rating     Int // 1-5 stars
+  comment    String?
+  reviewType String // farmer, product, expert
+
+  reviewerId String
+  reviewer   User   @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  targetId String // farmerId, produceId, or expertId
+
+  createdAt DateTime @default(now())
+
+  @@index([reviewerId])
+  @@index([targetId])
+  @@map("review")
+}
+
+// Notifications
+model Notification {
+  id      String @id @default(cuid())
+  title   String
+  message String
+  type    String // price_alert, weather, message, order, system
+
+  userId String
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
+  metadata Json? // Additional data for the notification
+
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([type])
+  @@map("notification")
+}
+
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Notification Settings
+  emailNotifications Boolean @default(true)
+  pushNotifications  Boolean @default(true)
+  smsNotifications   Boolean @default(false)
+  marketAlerts       Boolean @default(true)
+  orderUpdates       Boolean @default(true)
+  chatMessages       Boolean @default(true)
+  weeklyReports      Boolean @default(true)
+
+  // Privacy Settings
+  profileVisibility     String  @default("PUBLIC") // PUBLIC, PRIVATE, BUYERS_ONLY
+  showContactInfo       Boolean @default(true)
+  showLocation          Boolean @default(true)
+  allowDirectMessages   Boolean @default(true)
+  dataCollectionConsent Boolean @default(true)
+
+  // App Settings
+  language String @default("en")
+  timezone String @default("Africa/Addis_Ababa")
+  currency String @default("ETB")
+  theme    String @default("light") // light, dark, auto
+
+  // Security Settings
+  twoFactorEnabled   Boolean @default(false)
+  loginNotifications Boolean @default(true)
+  sessionTimeout     Int     @default(30) // minutes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
+}

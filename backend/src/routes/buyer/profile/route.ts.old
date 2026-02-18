@@ -1,0 +1,121 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function GET(request: NextRequest) {
+  try {
+    // TODO: Get user ID from authentication
+    const userId = 1; // Replace with actual authenticated user ID
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        profile: true,
+        buyerProfile: true
+      }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Combine base profile and buyer-specific profile
+    const buyerProfile = {
+      // Base profile data
+      name: user.name,
+      email: user.email,
+      phone: user.profile?.phone,
+      bio: user.profile?.bio,
+      location: user.profile?.location,
+      profilePicture: user.profile?.profilePicture,
+      
+      // Buyer-specific data
+      companyName: user.buyerProfile?.companyName,
+      companyType: user.buyerProfile?.companyType,
+      businessLicense: user.buyerProfile?.businessLicense,
+      taxId: user.buyerProfile?.taxId,
+      preferredCrops: user.buyerProfile?.preferredCrops || [],
+      orderVolume: user.buyerProfile?.orderVolume,
+      orderFrequency: user.buyerProfile?.orderFrequency,
+      qualityRequirements: user.buyerProfile?.qualityRequirements || [],
+      deliveryPreferences: user.buyerProfile?.deliveryPreferences,
+      billingInfo: user.buyerProfile?.billingInfo
+    };
+
+    return NextResponse.json(buyerProfile);
+  } catch (error) {
+    console.error('Error fetching buyer profile:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    // TODO: Get user ID from authentication
+    const userId = 1; // Replace with actual authenticated user ID
+
+    const profileData = await request.json();
+
+    // Update base profile
+    await prisma.profile.upsert({
+      where: { userId },
+      update: {
+        phone: profileData.phone,
+        bio: profileData.bio,
+        location: profileData.location,
+        profilePicture: profileData.profilePicture
+      },
+      create: {
+        userId,
+        phone: profileData.phone,
+        bio: profileData.bio,
+        location: profileData.location,
+        profilePicture: profileData.profilePicture
+      }
+    });
+
+    // Update buyer-specific profile
+    await prisma.buyerProfile.upsert({
+      where: { userId },
+      update: {
+        companyName: profileData.companyName,
+        companyType: profileData.companyType,
+        businessLicense: profileData.businessLicense,
+        taxId: profileData.taxId,
+        preferredCrops: profileData.preferredCrops,
+        orderVolume: profileData.orderVolume,
+        orderFrequency: profileData.orderFrequency,
+        qualityRequirements: profileData.qualityRequirements,
+        deliveryPreferences: profileData.deliveryPreferences,
+        billingInfo: profileData.billingInfo
+      },
+      create: {
+        userId,
+        companyName: profileData.companyName,
+        companyType: profileData.companyType,
+        businessLicense: profileData.businessLicense,
+        taxId: profileData.taxId,
+        preferredCrops: profileData.preferredCrops,
+        orderVolume: profileData.orderVolume,
+        orderFrequency: profileData.orderFrequency,
+        qualityRequirements: profileData.qualityRequirements,
+        deliveryPreferences: profileData.deliveryPreferences,
+        billingInfo: profileData.billingInfo
+      }
+    });
+
+    // Update user name if provided
+    if (profileData.name) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { name: profileData.name }
+      });
+    }
+
+    return NextResponse.json({ message: 'Profile updated successfully' });
+  } catch (error) {
+    console.error('Error updating buyer profile:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
